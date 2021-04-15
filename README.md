@@ -8,4 +8,5 @@ python -m torch.distributed.launch step1_train_DDP.py （在某些机器上可�
 
 # 参考：
 https://fyubang.com/2019/07/23/distributed-training3/
+
 https://blog.csdn.net/zwqjoy/article/details/89415933
