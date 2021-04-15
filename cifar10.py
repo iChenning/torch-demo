@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 random.seed(0)
 np.random.seed(0)
