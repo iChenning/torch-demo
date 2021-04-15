@@ -1,14 +1,15 @@
 import torch
 import torchvision as tv
 import torch.backends.cudnn as cudnn
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as ddp
 import os
 import time
 import random
 import argparse
 import numpy as np
 
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 random.seed(0)
 np.random.seed(0)
@@ -19,6 +20,11 @@ if torch.cuda.is_available():
 cudnn.benchmark = True
 
 def main(args):
+    # dist init
+    torch.cuda.set_device(args.local_rank)
+    torch.distributed.init_process_group(backend='nccl', init_method='env://')
+    print(torch.cuda.device_count(), args.local_rank)
+
     # data
     train_transform = tv.transforms.Compose([])
     if args.data_augmentation:
@@ -42,12 +48,13 @@ def main(args):
                                     train=False,
                                     transform=test_transform,
                                     download=True)
-
+    sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                batch_size=args.bs,
-                                               shuffle=True,
+                                               shuffle=False,
                                                pin_memory=True,
-                                               num_workers=4)
+                                               num_workers=4,
+                                               sampler=sampler)
 
     test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
                                               batch_size=args.bs,
@@ -57,24 +64,24 @@ def main(args):
 
     # net
     net = tv.models.resnet18(num_classes=10)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = net.to(device)
-    if args.multi_gpu and torch.cuda.device_count() > 1:
-        print(torch.cuda.device_count())
-        net = torch.nn.DataParallel(net)
+    net = net.cuda()
 
     # optimizer and loss
     optimizer = torch.optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [50, 80], 0.1)
-    criterion = torch.nn.CrossEntropyLoss().to(device)
+    criterion = torch.nn.CrossEntropyLoss().cuda()
+
+    net = torch.nn.SyncBatchNorm.convert_sync_batchnorm(net)
+    net = ddp(net, device_ids=[args.local_rank], find_unused_parameters=True)
 
     # train
-    net.train()
     for i_epoch in range(100):
+        net.train()
         time_s = time.time()
+        train_loader.sampler.set_epoch(i_epoch)
         for i_iter, data in enumerate(train_loader):
             img, label = data
-            img, label = img.to(device), label.to(device)
+            img, label = img.cuda(), label.cuda()
 
             optimizer.zero_grad()
             feat = net(img)
@@ -83,7 +90,8 @@ def main(args):
             optimizer.step()
             time_e = time.time()
 
-            print('Epoch:{:3}/100 || Iter: {:4}/{} || '
+            if args.local_rank == 1:
+                print('Epoch:{:3}/100 || Iter: {:4}/{} || '
                         'Loss: {:2.4f} '
                         'ETA: {:.2f}min'.format(
                 i_epoch + 1, i_iter + 1, len(train_loader),
@@ -91,30 +99,12 @@ def main(args):
                 (time_e - time_s) * (100 - i_epoch) * len(train_loader) / (i_iter + 1) / 60))
         scheduler.step()
 
-    # valid
-    net.eval()  # Change model to 'eval' mode (BN uses moving mean/var).
-    correct = 0.
-    total = 0.
-    for images, labels in test_loader:
-        images = images.cuda()
-        labels = labels.cuda()
-
-        with torch.no_grad():
-            pred = net(images)
-
-        pred = torch.max(pred.data, 1)[1]
-        total += labels.size(0)
-        correct += (pred == labels).sum().item()
-
-    val_acc = correct / total
-    print(i_epoch, val_acc)
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--bs', type=int, default=128)
     parser.add_argument('--data_augmentation', type=bool, default=True)
-    parser.add_argument('--multi_gpu', type=bool, default=False)
+    parser.add_argument("--local_rank", type=int, default=0, help='master rank')
 
     args = parser.parse_args()
 
