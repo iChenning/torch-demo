@@ -2,9 +2,16 @@ import torch
 import torchvision as tv
 import torch.backends.cudnn as cudnn
 import os
+import time
 import random
 import argparse
 import numpy as np
+
+random.seed(0)
+np.random.seed(0)
+torch.manual_seed(0)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(0)
 
 cudnn.benchmark = True
 
@@ -61,6 +68,7 @@ def main(args):
     # train
     net.train()
     for i_epoch in range(100):
+        time_s = time.time()
         for i_iter, data in enumerate(train_loader):
             img, label = data
             img, label = img.to(device), label.to(device)
@@ -70,8 +78,14 @@ def main(args):
             loss = criterion(feat, label)
             loss.backward()
             optimizer.step()
+            time_e = time.time()
 
-            print(i_epoch, i_iter, loss.item())
+            print('Epoch:{:3}/100 || Iter: {:4}/{} || '
+                        'Loss: {:2.4f} '
+                        'ETA: {:.2f}min'.format(
+                i_epoch + 1, i_iter + 1, len(train_loader),
+                loss.item(),
+                (time_e - time_s) * (100 - i_epoch) * len(train_loader) / (i_iter + 1) / 60))
         scheduler.step()
 
     # valid
