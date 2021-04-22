@@ -9,7 +9,6 @@ import random
 import argparse
 import numpy as np
 
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 random.seed(0)
 np.random.seed(0)
@@ -107,5 +106,4 @@ if __name__ == '__main__':
     parser.add_argument("--local_rank", type=int, default=0, help='master rank')
 
     args = parser.parse_args()
-
     main(args)

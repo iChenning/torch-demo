@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 
 
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 random.seed(0)
 np.random.seed(0)
@@ -57,7 +57,6 @@ def main(args):
 
     # net
     net = tv.models.resnet18(num_classes=10)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net = net.to(device)
     if args.multi_gpu and torch.cuda.device_count() > 1:
         print(torch.cuda.device_count())
