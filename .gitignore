@@ -1,1 +1,4 @@
 /data/
+/int8-ptq.pth
+/int8-qat.pth
+/mobilenet_v2.pth
